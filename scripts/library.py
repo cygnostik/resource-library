@@ -123,17 +123,78 @@ def _validate(data: Any, path: Path) -> None:
             f"error: {path} has an unexpected shape "
             "(expected an object with a 'sources' list); refusing to touch it"
         )
+    if not isinstance(data.get("version"), int):
+        raise SystemExit(f"error: {path} has no integer version; refusing to touch it")
     seen: set[int] = set()
     for entry in data["sources"]:
         if not isinstance(entry, dict):
             raise SystemExit(f"error: {path} has a non-object entry; refusing to touch it")
-        if not isinstance(entry.get("id"), int):
+        if not isinstance(entry.get("id"), int) or isinstance(entry.get("id"), bool):
             raise SystemExit(f"error: {path} has an entry without an integer id; refusing to touch it")
         if entry["id"] in seen:
             raise SystemExit(f"error: {path} has duplicate id {entry['id']}; refusing to touch it")
         seen.add(entry["id"])
         if not isinstance(entry.get("url"), str) or not entry["url"]:
             raise SystemExit(f"error: {path} entry {entry['id']} has no url; refusing to touch it")
+        # Type discipline on every field that is written with a declared type. A string
+        # "false" or a numeric id looks like data but silently poisons every later check
+        # that branches on it -- `commercial_ok: "false"` reads as established and false
+        # at the same time, which is exactly the wrong answer for a permission field.
+        for field in ("title", "what_it_is", "license", "license_url", "permission_note",
+                      "provenance", "verified_by", "notes", "category"):
+            if field in entry and not isinstance(entry[field], str):
+                raise SystemExit(
+                    f"error: {path} entry {entry['id']} field '{field}' is not a string "
+                    f"({type(entry[field]).__name__}); refusing to touch it"
+                )
+        for field in ("commercial_ok", "attribution_required"):
+            # Absent means "not established" -- the honest state. Present must be a real
+            # bool, never a truthy string.
+            if field in entry and not isinstance(entry[field], bool):
+                raise SystemExit(
+                    f"error: {path} entry {entry['id']} field '{field}' is not a boolean "
+                    f"({type(entry[field]).__name__}). Omit it to mean 'not established' "
+                    "rather than storing a false-looking value; refusing to touch it"
+                )
+        if "kind" in entry and entry["kind"] not in KINDS:
+            raise SystemExit(
+                f"error: {path} entry {entry['id']} kind {entry['kind']!r} is not one of "
+                f"{sorted(KINDS)}; refusing to touch it"
+            )
+        if "availability" in entry and entry["availability"] not in AVAILABILITY:
+            raise SystemExit(
+                f"error: {path} entry {entry['id']} availability "
+                f"{entry['availability']!r} is not one of {sorted(AVAILABILITY)}; "
+                "refusing to touch it"
+            )
+        if "provenance" in entry and entry["provenance"] not in PROVENANCE:
+            raise SystemExit(
+                f"error: {path} entry {entry['id']} provenance "
+                f"{entry['provenance']!r} is not one of {sorted(PROVENANCE)}; "
+                "refusing to touch it"
+            )
+        for field in ("accessed", "verified_at"):
+            if field in entry:
+                if not isinstance(entry[field], str):
+                    raise SystemExit(
+                        f"error: {path} entry {entry['id']} field '{field}' is not an "
+                        "ISO date string; refusing to touch it"
+                    )
+                try:
+                    _dt.date.fromisoformat(entry[field])
+                except ValueError:
+                    raise SystemExit(
+                        f"error: {path} entry {entry['id']} field '{field}' is not a "
+                        f"valid ISO date ({entry[field]!r}); refusing to touch it"
+                    )
+        if "keywords" in entry:
+            kw = entry["keywords"]
+            if not isinstance(kw, list) or not all(isinstance(k, str) for k in kw):
+                raise SystemExit(
+                    f"error: {path} entry {entry['id']} keywords is not a list of "
+                    "strings; refusing to touch it"
+                )
+
 
 
 def save(path: Path, data: dict[str, Any]) -> None:
@@ -281,16 +342,32 @@ def enrich(store: Path, url: str, verify: bool = False, **fields: Any) -> dict[s
     """
     fields = {k: v for k, v in fields.items() if v is not None}
     canon = canonicalize(url)
+
+    # Registration happens OUTSIDE the lock, deliberately. register_urls() shells out to
+    # sources.py, which takes the same lock; holding it across that call nests two
+    # acquisitions of one lockfile. The inner waiter cannot tell the parent's live lock
+    # from a crashed run's stale one, times out after 5s and unlinks it -- which hands
+    # the lock to a third writer while this one still believes it holds it. Acquire the
+    # lock only for the read-modify-write that actually needs it.
     with _locked(store):
         data = load(store)
         entry = next((e for e in data["sources"] if e["url"] == canon), None)
-        is_new = entry is None
-        if is_new:
-            entries = register_urls(store, [canon], None)
-            if not entries or entries[0] is None:
-                raise SystemExit(f"error: could not register {canon}")
-            data = load(store)
-            entry = next(e for e in data["sources"] if e["url"] == canon)
+
+    is_new = entry is None
+    if is_new:
+        entries = register_urls(store, [canon], None)
+        if not entries or entries[0] is None:
+            raise SystemExit(f"error: could not register {canon}")
+
+    with _locked(store):
+        # Re-read under the lock: registration (or a concurrent writer) may have changed
+        # the file since the probe above. Never merge against a stale snapshot.
+        data = load(store)
+        entry = next((e for e in data["sources"] if e["url"] == canon), None)
+        if entry is None:
+            raise SystemExit(
+                f"error: {canon} disappeared between register and enrich; re-run `add`"
+            )
         for key, value in fields.items():
             if key == "keywords" and isinstance(value, list) and isinstance(entry.get(key), list):
                 # Union rather than overwrite: a second `add` that adds one synonym
@@ -590,13 +667,22 @@ def main(argv: list[str] | None = None) -> int:
         for e in data["sources"]:
             if not e.get("verified_at"):
                 problems.append(f"[{e['id']}] no verified_at — a stale license claim is worse than no entry")
-            if e.get("commercial_ok") is None and e.get("license"):
+            # An unset permission field is OMITTED from the record, never written null, so
+            # the check is `in entry` rather than `is None`. Testing for None here never
+            # fired, which silently disabled the whole availability-vs-permission audit.
+            if "commercial_ok" not in e and e.get("license"):
                 problems.append(
                     f"[{e['id']}] has a license but commercial_ok is unset — "
-                    "availability is not permission; establish it or leave it null"
+                    "availability is not permission; establish it or leave it omitted"
                 )
             if e.get("availability") == "verified_fetchable" and not e.get("verified_at"):
                 problems.append(f"[{e['id']}] claims verified_fetchable without verified_at")
+            for field in ("commercial_ok", "attribution_required"):
+                if field in e and not isinstance(e[field], bool):
+                    problems.append(
+                        f"[{e['id']}] {field} is {type(e[field]).__name__}, not a boolean "
+                        "— omit it to mean 'not established'"
+                    )
         if problems:
             print("verify: problems found")
             for pr in problems:
