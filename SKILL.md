@@ -10,11 +10,6 @@ metadata:
     tags: [research, resources, library, citations, provenance, reuse]
     category: research
     related_skills: [grounded-citations, schema-design, local-json-ledger, llm-wiki, web-audio-source-research]
-    config:
-      - key: resource-library.store_path
-        description: "Path to the resource library JSON store"
-        default: "~/.hermes/data/resource-library/library.json"
-        prompt: "Resource library store path"
 ---
 
 # Resource Library
@@ -64,9 +59,13 @@ and exits rather than reimplementing that logic.
 ## How to Run
 
 The store path resolves in this order: `--store`, then `$HERMES_RESOURCE_LIBRARY`, then
-the configured `skills.config.resource-library.store_path`, then
 `~/.hermes/data/resource-library/library.json` (durable, under `$HERMES_HOME`, unlike
 `cache/`).
+
+**It does not read `config.yaml`.** A skill document is handed to the agent as text; it
+does not inject settings into a plain Python script, so a `skills.config.*` key would
+never reach the CLI. Pass `--store` or export the env var instead — do not document a
+config key that the code does not read.
 
 ```bash
 S="${HERMES_SKILL_DIR}/scripts/library.py"
@@ -260,9 +259,9 @@ Record what you found; do not guess, and do not block.
 
 ## Availability is not permission
 
-The library is a **durable, user-controlled store by design** (SKILL.md frontmatter's
-`skills.config.resource-library.store_path` declares its one non-secret path; the path
-is resolved, not hardcoded). It maintains state across sessions intentionally — that is
+The library is a **durable, user-controlled store by design**: its path is resolved at
+runtime (`--store`, then `$HERMES_RESOURCE_LIBRARY`, then the `~/.hermes/data/` default),
+not hardcoded. It maintains state across sessions intentionally — that is
 the product. It writes only that one JSON file, stores only non-secret references, and
 performs no network access, no cron/startup hooks, and no background persistence of its
 own.

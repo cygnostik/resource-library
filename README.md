@@ -50,10 +50,12 @@ This owns *reference knowledge* — what exists, where, under what terms. `/lear
 
 ## Known gaps
 
-- `kind: dataset` and `kind: spec` are accepted by the validator but have no real
-  reference entries yet. Synthetic enum tests are not domain validation.
-- `verify` checks record shape, not semantic correctness.
-- Concurrent writers share one `O_EXCL` lock; a nested acquisition path exists in
-  `enrich()` and is untested under sustained contention.
-
-No publishing or public distribution has been authorized.
+- `verify` checks record shape and types, not semantic correctness. It cannot tell a
+  license label that is wrong from one that is right — only that the fields are the
+  declared types and the dates parse.
+- The store is one JSON file with an `O_EXCL` sibling lock. Twelve concurrent writers on
+  fresh URLs held up under test, but power-loss durability, stale-lock recovery after a
+  crash, and Windows rename/locking semantics are untested.
+- `commercial_ok` and `attribution_required` are boolean summaries; the full terms live
+  in `license` and `permission_note`. Where terms are only partly established, record the
+  nuance in `permission_note` rather than collapsing it to a boolean.
