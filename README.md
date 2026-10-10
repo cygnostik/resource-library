@@ -1,6 +1,6 @@
 # resource-library
 
-![Resource Library](docs/social-preview.png)
+![Resource Library](skills/resource-library/docs/social-preview.png)
 
 A Hermes Agent skill: a plain-JSON catalog of external resources — references, data and
 reusable tools — so the web is browsed once and the awareness is reused instead of
@@ -67,7 +67,7 @@ This owns *reference knowledge* — what exists, where, under what terms. `/lear
 Publishing to the Skills Hub is a separate, explicit step:
 
 ```bash
-hermes skills publish skills/resource-library --to github --repo owner/repo
+hermes skills publish skills/resource-library --to github --repo cygnostik/resource-library
 ```
 
 Anyone can also install directly from this repo once it is public:
@@ -78,4 +78,4 @@ hermes skills install resource-library
 ```
 
 Hub installs are security-scanned at install time; `hermes skills audit <name>` re-scans
-a copy afterwards. `docs/social-preview.png` (1280×640) is the link/social card.
+a copy afterwards. `skills/resource-library/docs/social-preview.png` (1280×640) is the link/social card.
