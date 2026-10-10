@@ -1,0 +1,19 @@
+# The skill directory is also the release checkout, so the working tree is the source.
+# Nothing here ships with the skill except SKILL.md, README.md, LICENSE and scripts/.
+#
+# The live library store is deliberately NOT part of the skill: it is per-machine data
+# at ~/.hermes/data/resource-library/library.json, not reference material a reader
+# should install. A published copy must not carry someone's private catalog.
+
+# Keep the skill tree itself out of what a consumer copies
+.git/
+
+# Never publish the live store or any local data
+library.json
+*.json.bak
+*.bak
+
+# Editor / OS noise
+.DS_Store
+__pycache__/
+*.pyc
