@@ -64,18 +64,29 @@ This owns *reference knowledge* — what exists, where, under what terms. `/lear
 
 ## Sharing
 
-Publishing to the Skills Hub is a separate, explicit step:
+The catalog resolves this as a single-skill repo. Install by identifier:
 
 ```bash
-hermes skills publish skills/resource-library --to github --repo cygnostik/resource-library
+hermes skills install skills-sh/cygnostik/resource-library/skills/resource-library
 ```
 
-Anyone can also install directly from this repo once it is public:
+Or add the repo as a tap and install by name:
 
 ```bash
 hermes skills tap add cygnostik/resource-library
 hermes skills install resource-library
 ```
 
+**The skill must live at `skills/resource-library/`.** A tap resolves a repo at the path
+`skills/` and expects each skill in its own subdirectory, so `SKILL.md` at the repo root
+is invisible to the catalog — the tap registers cleanly and resolves nothing.
+
+Publishing to the Skills Hub is a separate, explicit step:
+
+```bash
+hermes skills publish skills/resource-library --to github --repo cygnostik/resource-library
+```
+
 Hub installs are security-scanned at install time; `hermes skills audit <name>` re-scans
-a copy afterwards. `skills/resource-library/docs/social-preview.png` (1280×640) is the link/social card.
+a copy afterwards. `skills/resource-library/docs/social-preview.png` (1280×640) is the
+link/social card.
