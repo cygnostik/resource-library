@@ -4,7 +4,6 @@ description: "Use when checking if we already know about a resource."
 version: 1.0.0
 author: Chris (Kosmos)
 license: MIT
-platforms: [linux, macos, windows]
 metadata:
   hermes:
     tags: [research, resources, library, citations, provenance, reuse]
@@ -367,3 +366,18 @@ python3 "$S" verify
 Green means every entry carries `verified_at`, no entry pairs a license with an
 unestablished commercial status, and the JSON parses and passes structural validation.
 The file is plain, indented JSON — open it in any editor to read or fix it by hand.
+
+### Testing the skill itself
+
+The official Hermes test path — confirm the agent actually loads and follows the skill
+rather than guessing at the CLI:
+
+```bash
+hermes chat --toolsets skills -q "Use the resource-library skill to find resources for <task>"
+```
+
+Check the agent runs `${HERMES_SKILL_DIR}/scripts/library.py` instead of reimplementing
+lookups, and that it registers rather than browsing blind.
+
+`hermes skills audit [name]` re-scans installed hub skills; it only covers hub-installed
+copies, so it will not cover this directory until it is published and installed.
